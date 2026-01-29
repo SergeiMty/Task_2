@@ -12,7 +12,6 @@ def client():
 
 @pytest.fixture
 def user_payload():
-    # всегда уникальный email, чтобы не ловить 403 "User already exists"
     unique = uuid.uuid4().hex[:10]
     return {
         "email": f"sergey_{unique}@yandex.ru",
@@ -33,18 +32,23 @@ def registered_user(client, user_payload):
     )
     data = r.json()
 
-    # если вдруг сервер лагнул - пусть тест падает честно
     assert r.status_code == 200, f"Register failed: {r.status_code}, body={r.text}"
-    assert data.get("success") is True
+    assert data.get("success") is True, f"Register failed: body={data}"
 
     access_token = data["accessToken"]
     refresh_token = data["refreshToken"]
 
-    yield {
+    user_data = {
         **user_payload,
         "accessToken": access_token,
         "refreshToken": refresh_token
     }
 
-    # teardown: удаляем юзера
-    client.delete_user(access_token)
+    try:
+        yield user_data
+    finally:
+        # удаляем юзера (если токен валиден)
+        try:
+            client.delete_user(access_token)
+        except Exception:
+            pass
